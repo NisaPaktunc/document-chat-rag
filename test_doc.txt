@@ -1,0 +1,11 @@
+Yapay Zeka ve Makine Ogrenimi
+
+Yapay zeka (YZ), insanlarin dusunme ve ogrenme yeteneklerini taklit eden bilgisayar sistemleridir. 
+Makine ogrenimi ise yapay zekanin bir alt dalidir ve bilgisayarlarin verilerden ogrenme yetenegine odaklanir.
+
+Derin ogrenme, makine ogreniminin bir alt kategorisidir. Yapay sinir aglari kullanarak karmasik 
+oruntuleri tanimlar. Goruntu tanima, dogal dil isleme ve konusma tanima gibi alanlarda buyuk 
+basarilar elde etmistir.
+
+Turkiye'de yapay zeka calismalari hiz kazanmistir. Universiteler ve ozel sektor, YZ projelerine 
+yatirim yapmaktadir. Ozellikle saglik, finans ve egitim sektorlerinde YZ uygulamalari yayginlasmaktadir.

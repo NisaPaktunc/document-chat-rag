@@ -1,0 +1,96 @@
+# =====================================================================
+# Document Chat — RAG Uygulaması Docker Compose Yapılandırması
+# =====================================================================
+#
+# Kullanım:
+#   docker-compose up --build        → İlk çalıştırma (image oluştur + başlat)
+#   docker-compose up -d             → Arka planda çalıştır
+#   docker-compose down              → Durdur
+#   docker-compose down -v           → Durdur + volume sil (veri kaybı!)
+#   docker-compose logs -f backend   → Backend loglarını takip et
+#
+# Gerekli:
+#   • Proje kökünde .env dosyası olmalı (GOOGLE_API_KEY tanımlı)
+#   • Docker ve Docker Compose kurulu olmalı
+# =====================================================================
+
+services:
+  # ── Backend (FastAPI + RAG) ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: document-chat-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+    # .env dosyasından ortam değişkenlerini oku
+    env_file:
+      - .env
+
+    # Ek ortam değişkenleri
+    environment:
+      - CHROMA_PERSIST_DIR=/app/chroma_db
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+
+    # ChromaDB verileri kalıcı olarak saklanır
+    volumes:
+      - chroma_data:/app/chroma_db
+
+    # Sağlık kontrolü
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+    # Ağ
+    networks:
+      - rag_network
+
+  # ── Frontend (Gradio) ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: document-chat-frontend
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+
+    # Backend hazır olduktan sonra başlat
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    # Frontend'in backend'e erişmesi için
+    environment:
+      - BACKEND_URL=http://backend:8000
+
+    # Sağlık kontrolü
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+    # Ağ
+    networks:
+      - rag_network
+
+# ── Kalıcı Volume ──────────────────────────────────────────────────
+# ChromaDB vektör veritabanı verileri burada saklanır.
+# docker-compose down -v ile silinir (dikkat!).
+volumes:
+  chroma_data:
+    driver: local
+
+# ── Ağ ─────────────────────────────────────────────────────────────
+# Backend ve frontend aynı ağda iletişim kurar.
+networks:
+  rag_network:
+    driver: bridge
