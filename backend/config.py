@@ -24,8 +24,8 @@ load_dotenv(dotenv_path=_env_path)
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
 
 # ── Embedding Ayarları ──────────────────────────────────────────────
-EMBEDDING_MODEL: str = "models/text-embedding-004"
-EMBEDDING_DIMENSION: int = 768          # text-embedding-004 çıktı boyutu
+EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+EMBEDDING_DIMENSION: int = 3072        # gemini-embedding-001 çıktı boyutu
 
 # ── LLM (Gemini) Ayarları ──────────────────────────────────────────
 LLM_MODEL: str = "gemini-1.5-flash"

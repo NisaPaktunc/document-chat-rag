@@ -109,9 +109,9 @@ def upload_files(file_list) -> str:
 
 def chat_ask(
     message: str,
-    chatbot_history: List[Tuple[str, str]],
+    chatbot_history: List[dict],
     server_history: List[dict],
-) -> Tuple[List[Tuple[str, str]], str, List[dict]]:
+) -> Tuple[List[dict], str, List[dict]]:
     """
     Sohbet geçmişi ile birlikte soruyu backend'e gönderir.
 
@@ -167,7 +167,8 @@ def chat_ask(
         updated_history = server_history or []
 
     chatbot_history = chatbot_history or []
-    chatbot_history.append((message, answer))
+    chatbot_history.append({"role": "user", "content": message})
+    chatbot_history.append({"role": "assistant", "content": answer})
     return chatbot_history, "", updated_history
 
 
@@ -400,7 +401,7 @@ with gr.Blocks(
             chatbot = gr.Chatbot(
                 label="Konuşma",
                 height=480,
-                type="tuples",
+                type="messages",
                 placeholder=(
                     "Henüz bir konuşma yok.\n"
                     "Önce doküman yükleyin, sonra sorularınızı sorun! 💡"
@@ -510,10 +511,10 @@ with gr.Blocks(
             doc_table = gr.Dataframe(
                 headers=["#", "Doküman Adı"],
                 datatype=["str", "str"],
-                value=fetch_document_table,
+                value=[["—", "Listeyi yenilemek için butona tıklayın"]],
                 interactive=False,
                 wrap=True,
-                height=350,
+                max_height=350,
             )
 
             refresh_table_btn = gr.Button(
