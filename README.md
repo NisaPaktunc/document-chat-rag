@@ -1,5 +1,7 @@
 # 📚 Document Chat — Dokümanlarınla Sohbet Et
 
+> 🎓 **Bu proje, Yapay Zeka ve Teknoloji Akademisi kapsamında geliştirilmiştir.**
+
 PDF, DOCX, DOC ve TXT dokümanlarınızı yükleyin, içerikleri hakkında Türkçe
 sorular sorun. Yanıtlar **Google Gemini 1.5 Flash** modeli tarafından,
 dokümanlarınızdaki bilgilere dayanarak üretilir.

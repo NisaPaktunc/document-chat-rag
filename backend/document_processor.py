@@ -456,9 +456,11 @@ class DocumentProcessor:
         kesin kaynak referansları verilebilir.
         """
         all_chunks: List[Dict] = []
+        page_count = 0
 
         with fitz.open(file_path) as doc:
             for page_num, page in enumerate(doc, start=1):
+                page_count = page_num
                 page_text = page.get_text("text")
                 cleaned = self.clean_text(page_text)
 
@@ -475,7 +477,7 @@ class DocumentProcessor:
         logger.info(
             "%s (PDF, %d sayfa) → %d chunk üretildi",
             filename,
-            len(list(fitz.open(file_path))),
+            page_count,
             len(all_chunks),
         )
         return all_chunks

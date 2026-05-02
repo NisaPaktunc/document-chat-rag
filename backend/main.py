@@ -320,6 +320,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
                 # source metadata'sını orijinal dosya adıyla güncelle
                 for chunk in chunks:
                     chunk["source"] = filename
+                    chunk["active"] = True
 
                 added = vector_store.add_documents(chunks)
                 total_chunks_added += added
@@ -629,6 +630,154 @@ async def health_check():
         uptime_seconds=round(uptime, 2),
     )
 
+
+@app.get("/debug")
+async def debug_info():
+    from config import EMBEDDING_MODEL
+    return {"EMBEDDING_MODEL": EMBEDDING_MODEL}
+
+
+# ── 9) POST /toggle_document/{filename} — Aktif/Pasif Yapma ───────
+
+@app.post(
+    "/toggle_document/{filename}",
+    tags=["Doküman"],
+    summary="Dokümanı aktif/pasif yap",
+)
+async def toggle_document(filename: str):
+    """Dokümanın active metadata alanını tersine çevirir."""
+    try:
+        available_docs = vector_store.get_document_list()
+        if filename not in available_docs:
+            raise HTTPException(
+                status_code=404,
+                detail=f"'{filename}' adlı doküman bulunamadı.",
+            )
+
+        all_data = vector_store.collection.get(
+            where={"source": filename},
+            include=["metadatas"],
+        )
+        ids = all_data.get("ids", [])
+        metadatas = all_data.get("metadatas", [])
+
+        if not ids:
+            raise HTTPException(status_code=404, detail="Chunk bulunamadı.")
+
+        current_active = metadatas[0].get("active", True) if metadatas else True
+        new_active = not current_active
+
+        new_metadatas = []
+        for meta in metadatas:
+            updated = dict(meta) if meta else {}
+            updated["active"] = new_active
+            new_metadatas.append(updated)
+
+        vector_store.collection.update(ids=ids, metadatas=new_metadatas)
+
+        status_text = "aktif" if new_active else "pasif"
+        logger.info("Doküman %s yapıldı: %s", status_text, filename)
+
+        return {
+            "status": "success",
+            "filename": filename,
+            "active": new_active,
+            "message": f"'{filename}' artık {status_text}.",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Toggle hatası: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Toggle hatası: {e}")
+
+
+# ── 10) GET /preview/{filename} — Doküman Önizleme ────────────────
+
+@app.get(
+    "/preview/{filename}",
+    tags=["Doküman"],
+    summary="Doküman önizlemesi",
+)
+async def preview_document(filename: str):
+    """Dokümanın chunk'larından ilk 5000 karakteri döndürür."""
+    try:
+        available_docs = vector_store.get_document_list()
+        if filename not in available_docs:
+            raise HTTPException(
+                status_code=404,
+                detail=f"'{filename}' adlı doküman bulunamadı.",
+            )
+
+        chunks = _get_chunks_for_document(filename)
+        if not chunks:
+            raise HTTPException(status_code=404, detail="Chunk bulunamadı.")
+
+        full_text = "\n\n".join(c["text"] for c in chunks if c.get("text"))
+        preview_text = full_text[:5000]
+
+        logger.info("Önizleme: %s (%d karakter)", filename, len(preview_text))
+        return {
+            "filename": filename,
+            "preview": preview_text,
+            "total_chars": len(full_text),
+            "truncated": len(full_text) > 5000,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Önizleme hatası: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Önizleme hatası: {e}")
+
+
+# ── 11) POST /suggest_questions — Soru Önerisi Üretme ─────────────
+
+class SuggestRequest(BaseModel):
+    """POST /suggest_questions isteği için gövde modeli."""
+    document_name: str = Field(..., min_length=1)
+
+
+@app.post(
+    "/suggest_questions",
+    tags=["RAG"],
+    summary="Doküman için soru önerileri üret",
+)
+async def suggest_questions(request: SuggestRequest):
+    """Seçilen dokümanın içeriğinden LLM ile 3 örnek soru üretir."""
+    try:
+        chunks = _get_chunks_for_document(request.document_name)
+        if not chunks:
+            raise HTTPException(
+                status_code=404,
+                detail=f"'{request.document_name}' için chunk bulunamadı.",
+            )
+
+        content = "\n\n".join(c["text"] for c in chunks[:10])[:8000]
+
+        prompt = (
+            "Bu doküman hakkında kullanıcının sorabileceği, içerikle doğrudan ilgili "
+            "3 farklı ve özgün soru üret. Soruları Türkçe yaz.\n"
+            "Sadece soruları listele, başka hiçbir şey yazma.\n"
+            "Her soruyu ayrı satıra yaz, numara veya tire kullanma.\n\n"
+            f"Doküman İçeriği:\n{content}"
+        )
+
+        import google.generativeai as genai
+        from config import LLM_MODEL, LLM_TEMPERATURE
+
+        model = genai.GenerativeModel(model_name=LLM_MODEL)
+        response = model.generate_content(prompt)
+        questions = [
+            q.strip() for q in response.text.strip().split("\n") if q.strip()
+        ][:3]
+
+        logger.info("Soru önerileri üretildi: %s", request.document_name)
+        return {"questions": questions, "document_name": request.document_name}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Soru önerisi hatası: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Soru önerisi hatası: {e}")
 
 # =====================================================================
 # UYGULAMA BAŞLATMA

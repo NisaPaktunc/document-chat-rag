@@ -158,11 +158,15 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
             "Embedding batch %d-%d / %d işleniyor…",
             i + 1, min(i + _EMBEDDING_BATCH_SIZE, len(texts)), len(texts),
         )
-        batch_embeddings = _embed_with_retry(
+        result = _embed_with_retry(
             content=batch,
             task_type="retrieval_document",
         )
-        all_embeddings.extend(batch_embeddings)
+        # Batch boyutu 1 ise result tek vektör (List[float]) döner; normalize et
+        if batch and isinstance(result[0], float):
+            all_embeddings.append(result)
+        else:
+            all_embeddings.extend(result)
 
     return all_embeddings
 
@@ -347,6 +351,7 @@ class VectorStore:
         query: str,
         k: int = 5,
         where: Optional[Dict] = None,
+        active_only: bool = True,
     ) -> List[Dict]:
         """
         Kullanıcı sorgusunu embed eder ve ChromaDB'de kosinüs benzerliği
@@ -358,11 +363,10 @@ class VectorStore:
         Böylece 1.0 = mükemmel eşleşme, 0.0 = hiç ilgisiz.
 
         Args:
-            query: Kullanıcının sorduğu soru / arama metni.
-            k:     Döndürülecek maksimum sonuç sayısı (varsayılan: 5).
-            where: Opsiyonel metadata filtresi.
-                   Örnek: {"source": "rapor.pdf"}
-                   Örnek: {"page": 3}
+            query:       Kullanıcının sorduğu soru / arama metni.
+            k:           Döndürülecek maksimum sonuç sayısı (varsayılan: 5).
+            where:       Opsiyonel metadata filtresi.
+            active_only: True ise yalnızca aktif dokümanları getirir.
 
         Returns:
             Her biri şu anahtarları içeren dict listesi (benzerlik skoruna
@@ -375,13 +379,6 @@ class VectorStore:
 
         Raises:
             Exception: Embedding API tüm retry'lardan sonra başarısız olursa.
-
-        Örnekler:
-            >>> store = VectorStore()
-            >>> results = store.similarity_search("yapay zeka nedir?", k=3)
-            >>> for r in results:
-            ...     print(f"[{r['similarity_score']:.2f}] {r['text'][:60]}…")
-            ...     print(f"  Kaynak: {r['metadata'].get('source')}")
         """
         if self.collection.count() == 0:
             logger.warning("similarity_search: Koleksiyon boş, sonuç yok.")
@@ -391,14 +388,28 @@ class VectorStore:
         logger.debug("Sorgu embed ediliyor: '%s'", query[:80])
         query_embedding = get_query_embedding(query)
 
+        # ── Filtre oluştur ──
+        effective_where = dict(where) if where else {}
+        if active_only:
+            if effective_where:
+                # Mevcut filtre ile active filtresini birleştir
+                effective_where = {
+                    "$and": [
+                        effective_where,
+                        {"active": True},
+                    ]
+                }
+            else:
+                effective_where = {"active": True}
+
         # ── ChromaDB'de ara ──
         search_params: Dict = {
             "query_embeddings": [query_embedding],
             "n_results": min(k, self.collection.count()),
             "include": ["documents", "metadatas", "distances"],
         }
-        if where:
-            search_params["where"] = where
+        if effective_where:
+            search_params["where"] = effective_where
 
         results = self.collection.query(**search_params)
 
@@ -409,9 +420,6 @@ class VectorStore:
 
         formatted_results: List[Dict] = []
         for text, metadata, distance in zip(documents, metadatas, distances):
-            # Kosinüs mesafesini benzerlik skoruna çevir
-            # ChromaDB cosine distance: 0 (aynı) → 2 (zıt)
-            # Benzerlik skoru: 1.0 (aynı) → 0.0 (zıt)
             similarity_score = 1.0 - (distance / 2.0)
 
             formatted_results.append({
